@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   flexRender,
   functionalUpdate,
@@ -8,6 +8,7 @@ import {
   getExpandedRowModel,
   useReactTable,
   type ColumnDef,
+  type ColumnOrderState,
   type ColumnPinningState,
   type ExpandedState,
   type Row,
@@ -15,10 +16,11 @@ import {
   type SortingState,
   type Updater,
 } from '@tanstack/react-table'
-import { ChevronDown, ChevronRight, GripVertical, MoreHorizontal, Pencil, Eye } from 'lucide-react'
+import { ChevronDown, ChevronRight, GripVertical, MoreHorizontal, Pencil, Pin, PinOff, Eye } from 'lucide-react'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { displayValue, getIcon, getValueAtPath, resolveHref, SortIcon } from './utils'
 import type { DataTableColumn, DataTableFeatures, DataTableRowActions } from './types'
 
@@ -39,9 +41,10 @@ type DataTableProps<T> = {
   onExpandedIdsChange?: (ids: string[]) => void
   onAction?: (actionId: string, row: T) => void
   onRowClick?: (row: T) => void
-  initialColumnVisibility?: Record<string, boolean>
   columnVisibility?: Record<string, boolean>
   onColumnVisibilityChange?: (visibility: Record<string, boolean>) => void
+  columnOrder?: string[]
+  onColumnOrderChange?: (order: string[]) => void
   initialColumnSizing?: Record<string, number>
   persistKey?: string
   loading?: boolean
@@ -49,13 +52,17 @@ type DataTableProps<T> = {
   colSpan?: number
 }
 
+const SELECT_ID = '__select'
+const EXPAND_ID = '__expand'
+const ACTIONS_ID = '__actions'
+
 function pinStyle(column: { getIsPinned: () => false | 'left' | 'right'; getStart: (position: 'left' | 'right') => number; getAfter: (position: 'left' | 'right') => number; getSize: () => number }) {
   const pinned = column.getIsPinned()
   return {
     width: column.getSize(),
     minWidth: column.getSize(),
     maxWidth: column.getSize(),
-    position: pinned ? 'sticky' as const : 'relative' as const,
+    position: pinned ? ('sticky' as const) : ('relative' as const),
     left: pinned === 'left' ? column.getStart('left') : undefined,
     right: pinned === 'right' ? column.getAfter('right') : undefined,
     zIndex: pinned ? 2 : 1,
@@ -89,9 +96,10 @@ export function DataTable<T>({
   onExpandedIdsChange,
   onAction,
   onRowClick,
-  initialColumnVisibility,
   columnVisibility: controlledColumnVisibility,
   onColumnVisibilityChange,
+  columnOrder: controlledColumnOrder,
+  onColumnOrderChange,
   initialColumnSizing,
   persistKey = 'sell-do-table',
   loading = false,
@@ -106,12 +114,7 @@ export function DataTable<T>({
   const [sorting, setSorting] = useState<SortingState>([])
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [expanded, setExpanded] = useState<ExpandedState>({})
-  const [columnVisibility, setColumnVisibility] = useState<Record<string, boolean>>(() => {
-    if (typeof window === 'undefined') return initialColumnVisibility || {}
-    try {
-      return JSON.parse(window.localStorage.getItem(`${persistKey}:visibility`) || 'null') || initialColumnVisibility || {}
-    } catch { return initialColumnVisibility || {} }
-  })
+  const [internalVisibility, setInternalVisibility] = useState<Record<string, boolean>>({})
   const [columnSizing, setColumnSizing] = useState<Record<string, number>>(() => {
     if (typeof window === 'undefined') return initialColumnSizing || {}
     try {
@@ -119,32 +122,67 @@ export function DataTable<T>({
     } catch { return initialColumnSizing || {} }
   })
 
+  // Pin state (controlled internally, persisted). Seed from column.pin on mount.
+  const [pinnedLeft, setPinnedLeft] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = window.localStorage.getItem(`${persistKey}:pinnedLeft`)
+        if (stored) return JSON.parse(stored)
+      } catch {}
+    }
+    return canPin ? columns.filter((column) => column.pin === 'left').map((column) => column.id) : []
+  })
+  useEffect(() => {
+    if (typeof window !== 'undefined') window.localStorage.setItem(`${persistKey}:pinnedLeft`, JSON.stringify(pinnedLeft))
+  }, [persistKey, pinnedLeft])
+
+  const togglePin = (columnId: string) => {
+    setPinnedLeft((current) => current.includes(columnId) ? current.filter((id) => id !== columnId) : [...current, columnId])
+  }
+
   const pinning = useMemo<ColumnPinningState>(() => ({
-    left: canPin ? columns.filter((column) => column.pin === 'left').map((column) => column.id) : [],
+    // Keep the selection column first and always pinned-left so it never drifts behind other pinned columns.
+    left: [SELECT_ID, ...(canPin ? pinnedLeft.filter((id) => id !== SELECT_ID) : [])],
     right: canPin ? columns.filter((column) => column.pin === 'right').map((column) => column.id) : [],
-  }), [canPin, columns])
+  }), [canPin, columns, pinnedLeft])
+
+  // Column order (controlled from parent; always render __select, __expand first and __actions last).
+  const resolvedOrder = useMemo<ColumnOrderState>(() => {
+    const base = (controlledColumnOrder && controlledColumnOrder.length > 0 ? controlledColumnOrder : columns.map((column) => column.id)).filter((id) => columns.some((column) => column.id === id))
+    const missing = columns.map((column) => column.id).filter((id) => !base.includes(id))
+    const main = [...base, ...missing]
+    const order: string[] = []
+    if (canSelect) order.push(SELECT_ID)
+    if (canExpand) order.push(EXPAND_ID)
+    order.push(...main)
+    if (features.rowActions && rowActions) order.push(ACTIONS_ID)
+    return order
+  }, [canSelect, canExpand, columns, controlledColumnOrder, features.rowActions, rowActions])
+
   const rowSelectionState = selectedIds ? Object.fromEntries(selectedIds.map((id) => [id, true])) : rowSelection
   const expandedState = expandedIds ? Object.fromEntries(expandedIds.map((id) => [id, true])) : expanded
-  const visibilityState = controlledColumnVisibility || columnVisibility
+  const visibilityState = controlledColumnVisibility || internalVisibility
 
   const tableColumns = useMemo<ColumnDef<T, unknown>[]>(() => {
     const next: ColumnDef<T, unknown>[] = []
     if (canSelect) {
       next.push({
-        id: '__select',
+        id: SELECT_ID,
         size: 44,
         enableResizing: false,
         enableHiding: false,
+        enablePinning: false,
         header: ({ table }) => <Checkbox aria-label="Select all rows" checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')} onCheckedChange={(value) => table.toggleAllPageRowsSelected(Boolean(value))} />,
         cell: ({ row }) => <Checkbox aria-label={`Select row ${row.id}`} checked={row.getIsSelected()} disabled={!row.getCanSelect()} onCheckedChange={(value) => row.toggleSelected(Boolean(value))} />,
       })
     }
     if (canExpand) {
       next.push({
-        id: '__expand',
+        id: EXPAND_ID,
         size: 40,
         enableResizing: false,
         enableHiding: false,
+        enablePinning: false,
         header: () => null,
         cell: ({ row }) => row.getCanExpand() ? <button type="button" aria-label={row.getIsExpanded() ? 'Collapse row' : 'Expand row'} aria-expanded={row.getIsExpanded()} className="rounded p-1 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => row.toggleExpanded()}>{row.getIsExpanded() ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button> : null,
       })
@@ -159,11 +197,39 @@ export function DataTable<T>({
         enableSorting: canSort && column.sortable !== false,
         enableResizing: canResize && column.resizable !== false,
         enableHiding: column.hideable !== false,
+        enablePinning: canPin,
         header: ({ column: tableColumn }) => {
           const sort = tableColumn.getIsSorted()
+          const isPinned = tableColumn.getIsPinned() === 'left'
+          const alignClass = column.align === 'right' ? 'justify-end' : column.align === 'center' ? 'justify-center' : ''
           return (
-            <div className={`flex items-center gap-1.5 ${column.align === 'right' ? 'justify-end' : column.align === 'center' ? 'justify-center' : ''}`}>
-              {tableColumn.getCanSort() ? <button type="button" className="inline-flex items-center gap-1.5 rounded-sm font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={tableColumn.getToggleSortingHandler()} aria-label={`Sort by ${column.label}`} aria-sort={sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : 'none'}>{column.label}<SortIcon direction={sort} /></button> : <span>{column.label}</span>}
+            <div className={`flex items-center gap-1.5 ${alignClass}`}>
+              {tableColumn.getCanSort() ? (
+                <button type="button" className="inline-flex items-center gap-1.5 rounded-sm font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={tableColumn.getToggleSortingHandler()} aria-label={`Sort by ${column.label}`} aria-sort={sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : 'none'}>
+                  {column.label}
+                  <SortIcon direction={sort} />
+                </button>
+              ) : (
+                <span>{column.label}</span>
+              )}
+              {canPin && (
+                <TooltipProvider delayDuration={120}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        aria-label={isPinned ? `Unpin ${column.label}` : `Pin ${column.label}`}
+                        aria-pressed={isPinned}
+                        onClick={(event) => { event.stopPropagation(); togglePin(column.id) }}
+                        className={`inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isPinned ? 'text-primary' : ''}`}
+                      >
+                        {isPinned ? <Pin size={13} className="rotate-45" /> : <PinOff size={13} />}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">{isPinned ? 'Unpin column' : 'Pin column'}</TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
             </div>
           )
         },
@@ -176,29 +242,43 @@ export function DataTable<T>({
     })
     if (features.rowActions && rowActions) {
       next.push({
-        id: '__actions',
+        id: ACTIONS_ID,
         size: 56,
         enableResizing: false,
         enableHiding: false,
+        enablePinning: false,
         header: () => <span className="sr-only">Actions</span>,
         cell: ({ row }) => {
           const viewHref = resolveHref(rowActions.view?.href, row.original)
           const editHref = resolveHref(rowActions.edit?.href, row.original)
-          return <div className="flex items-center justify-end gap-0.5" onClick={(event) => event.stopPropagation()}>
-            {viewHref && <a href={viewHref} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={rowActions.view?.label || 'View'}><Eye size={16} /></a>}
-            {editHref && <a href={editHref} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={rowActions.edit?.label || 'Edit'}><Pencil size={16} /></a>}
-            {rowActions.menu?.length ? <DropdownMenu><DropdownMenuTrigger asChild><button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="More row actions"><MoreHorizontal size={17} /></button></DropdownMenuTrigger><DropdownMenuContent align="end">{rowActions.menu.map((action) => <DropdownMenuItem key={action.id} className={action.destructive ? 'text-destructive focus:text-destructive' : ''} onSelect={() => { action.onSelect?.(row.original); onAction?.(action.id, row.original) }}>{action.label}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : null}
-          </div>
+          return (
+            <div className="flex items-center justify-end gap-0.5" onClick={(event) => event.stopPropagation()}>
+              {viewHref && <a href={viewHref} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={rowActions.view?.label || 'View'}><Eye size={16} /></a>}
+              {editHref && <a href={editHref} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={rowActions.edit?.label || 'Edit'}><Pencil size={16} /></a>}
+              {rowActions.menu?.length ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button type="button" className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label="More row actions">
+                      <MoreHorizontal size={17} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    {rowActions.menu.map((action) => <DropdownMenuItem key={action.id} className={action.destructive ? 'text-destructive focus:text-destructive' : ''} onSelect={() => { action.onSelect?.(row.original); onAction?.(action.id, row.original) }}>{action.label}</DropdownMenuItem>)}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+            </div>
+          )
         },
       })
     }
     return next
-  }, [canPin, canResize, canSelect, canSort, columns, features.rowActions, onAction, rowActions])
+  }, [canExpand, canPin, canResize, canSelect, canSort, columns, features.rowActions, onAction, rowActions])
 
   const table = useReactTable({
     data,
     columns: tableColumns,
-    state: { sorting, rowSelection: rowSelectionState, expanded: expandedState, columnVisibility: visibilityState, columnSizing, columnPinning: pinning },
+    state: { sorting, rowSelection: rowSelectionState, expanded: expandedState, columnVisibility: visibilityState, columnSizing, columnPinning: pinning, columnOrder: resolvedOrder },
     getRowId,
     enableRowSelection: canSelect,
     enableExpanding: canExpand,
@@ -225,9 +305,13 @@ export function DataTable<T>({
     },
     onColumnVisibilityChange: (updater) => {
       const next = functionalUpdate(updater, visibilityState)
-      setColumnVisibility(next)
+      setInternalVisibility(next)
       onColumnVisibilityChange?.(next)
-      if (typeof window !== 'undefined') window.localStorage.setItem(`${persistKey}:visibility`, JSON.stringify(next))
+    },
+    onColumnOrderChange: (updater) => {
+      const next = functionalUpdate(updater, resolvedOrder)
+      const filtered = next.filter((id) => id !== SELECT_ID && id !== EXPAND_ID && id !== ACTIONS_ID && columns.some((column) => column.id === id))
+      onColumnOrderChange?.(filtered)
     },
     onColumnSizingChange: (updater) => {
       const next = functionalUpdate(updater, columnSizing)
@@ -246,24 +330,42 @@ export function DataTable<T>({
       <div className="overflow-x-auto">
         <Table className="min-w-[760px]">
           <TableHeader className="bg-muted/35">
-            {table.getHeaderGroups().map((headerGroup) => <TableRow key={headerGroup.id} className="hover:bg-transparent">
-              {headerGroup.headers.map((header) => <TableHead key={header.id} className="relative h-11 text-xs uppercase tracking-wide text-muted-foreground" style={pinStyle(header.column)}>
-                {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
-                {header.column.getCanResize() && <div onMouseDown={header.getResizeHandler()} onTouchStart={header.getResizeHandler()} className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-primary/50" aria-hidden="true"><GripVertical size={12} className="absolute right-0.5 top-1/2 -translate-y-1/2 opacity-0 hover:opacity-60" /></div>}
-              </TableHead>)}
-            </TableRow>)}
+            {table.getHeaderGroups().map((headerGroup) => (
+              <TableRow key={headerGroup.id} className="hover:bg-transparent">
+                {headerGroup.headers.map((header) => (
+                  <TableHead key={header.id} className="relative h-11 text-xs uppercase tracking-wide text-muted-foreground" style={pinStyle(header.column)}>
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                    {header.column.getCanResize() && (
+                      <div onMouseDown={header.getResizeHandler()} onTouchStart={header.getResizeHandler()} className="absolute right-0 top-0 h-full w-1.5 cursor-col-resize touch-none select-none hover:bg-primary/50" aria-hidden="true">
+                        <GripVertical size={12} className="absolute right-0.5 top-1/2 -translate-y-1/2 opacity-0 hover:opacity-60" />
+                      </div>
+                    )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
           </TableHeader>
           <TableBody>
-            {loading && features.loadingState !== false ? skeletonRows.map((_, index) => <TableRow key={`skeleton-${index}`}>
-              {table.getVisibleLeafColumns().map((column) => <TableCell key={column.id} style={pinStyle(column)}><div className="h-4 animate-pulse rounded bg-muted" /></TableCell>)}
-            </TableRow>) : table.getRowModel().rows.length === 0 ? <TableRow>
-              <TableCell colSpan={visibleColumnCount} className="h-40 text-center text-sm text-muted-foreground">{emptyMessage}</TableCell>
-            </TableRow> : table.getRowModel().rows.map((row) => <Fragment key={row.id}>
-              <TableRow data-state={row.getIsSelected() ? 'selected' : undefined} className="group cursor-default transition-colors hover:bg-muted/35" onClick={() => onRowClick?.(row.original)}>
-                {row.getVisibleCells().map((cell) => <TableCell key={cell.id} className="h-14 text-sm" style={pinStyle(cell.column)}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
+            {loading && features.loadingState !== false ? skeletonRows.map((_, index) => (
+              <TableRow key={`skeleton-${index}`}>
+                {table.getVisibleLeafColumns().map((column) => <TableCell key={column.id} style={pinStyle(column)}><div className="h-4 animate-pulse rounded bg-muted" /></TableCell>)}
               </TableRow>
-              {row.getIsExpanded() && <TableRow className="bg-muted/20 hover:bg-muted/20"><TableCell colSpan={visibleColumnCount} className="p-0">{renderExpandedRow?.(row)}</TableCell></TableRow>}
-            </Fragment>)}
+            )) : table.getRowModel().rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={visibleColumnCount} className="h-40 text-center text-sm text-muted-foreground">{emptyMessage}</TableCell>
+              </TableRow>
+            ) : table.getRowModel().rows.map((row) => (
+              <Fragment key={row.id}>
+                <TableRow data-state={row.getIsSelected() ? 'selected' : undefined} className="group cursor-default transition-colors hover:bg-muted/35" onClick={() => onRowClick?.(row.original)}>
+                  {row.getVisibleCells().map((cell) => <TableCell key={cell.id} className="h-14 text-sm" style={pinStyle(cell.column)}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>)}
+                </TableRow>
+                {row.getIsExpanded() && (
+                  <TableRow className="bg-muted/20 hover:bg-muted/20">
+                    <TableCell colSpan={visibleColumnCount} className="p-0">{renderExpandedRow?.(row)}</TableCell>
+                  </TableRow>
+                )}
+              </Fragment>
+            ))}
           </TableBody>
         </Table>
       </div>
