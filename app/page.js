@@ -1,10 +1,11 @@
 'use client'
 
-import { Suspense, useMemo, useState } from 'react'
-import { BarChart3, ChevronDown, Download, FileText, LayoutDashboard, LogOut, Menu, Moon, PanelLeft, Plus, RefreshCw, Settings, Sun, Users, X } from 'lucide-react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
+import { BarChart3, ChevronDown, Download, FileText, LayoutDashboard, LogOut, Menu, Moon, PanelLeftClose, PanelLeftOpen, Plus, RefreshCw, Settings, Sun, Users, X } from 'lucide-react'
 import { DataTableWithFilters, useDataTableUrlState } from '@/components/data-table'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 const BRAND = 'rgb(25 185 140)'
 
@@ -50,9 +51,38 @@ function Wordmark() {
 function AppContent() {
   const [dark, setDark] = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
   const [notice, setNotice] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const { state, onSearchChange, onSortChange, onPageChange, onPageSizeChange } = useDataTableUrlState({ defaultPageSize: 5 })
+
+  useEffect(() => {
+    try {
+      const storedCollapsed = window.localStorage.getItem('selldo:collapsed')
+      if (storedCollapsed !== null) setCollapsed(storedCollapsed === '1')
+      const storedTheme = window.localStorage.getItem('selldo:theme')
+      const prefersDark = storedTheme ? storedTheme === 'dark' : window.matchMedia?.('(prefers-color-scheme: dark)').matches
+      setDark(Boolean(prefersDark))
+      document.documentElement.classList.toggle('dark', Boolean(prefersDark))
+    } catch {}
+  }, [])
+
+  const toggleCollapsed = () => {
+    setCollapsed((value) => {
+      const next = !value
+      try { window.localStorage.setItem('selldo:collapsed', next ? '1' : '0') } catch {}
+      return next
+    })
+  }
+
+  const toggleDark = () => {
+    setDark((value) => {
+      const next = !value
+      try { window.localStorage.setItem('selldo:theme', next ? 'dark' : 'light') } catch {}
+      document.documentElement.classList.toggle('dark', next)
+      return next
+    })
+  }
 
   const filteredRows = useMemo(() => {
     const query = state.search.toLowerCase()
@@ -69,21 +99,77 @@ function AppContent() {
     const blob = new Blob([csv], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const link = document.createElement('a'); link.href = url; link.download = 'selldo-leads.csv'; link.click(); URL.revokeObjectURL(url); setNoticeBriefly('Export downloaded')
   }
 
-  const nav = <nav className="space-y-1 p-3">{navItems.map((item) => { const Icon = item.icon; const active = item.label === 'Leads'; return <button type="button" key={item.label} className={`flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${active ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`} onClick={() => { setMobileOpen(false); if (item.label !== 'Leads') setNoticeBriefly(`${item.label} workspace selected`) }}><Icon size={19} />{item.label}</button> })}</nav>
+  const nav = (isCollapsed) => (
+    <nav className="space-y-1 p-3">
+      {navItems.map((item) => {
+        const Icon = item.icon
+        const active = item.label === 'Leads'
+        const button = (
+          <button
+            type="button"
+            key={item.label}
+            className={`flex w-full items-center ${isCollapsed ? 'justify-center' : 'gap-3'} rounded-lg ${isCollapsed ? 'h-10 w-10 mx-auto' : 'px-3 py-2.5'} text-sm font-medium transition-colors ${active ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'text-muted-foreground hover:bg-muted hover:text-foreground'}`}
+            onClick={() => { setMobileOpen(false); if (item.label !== 'Leads') setNoticeBriefly(`${item.label} workspace selected`) }}
+            aria-label={item.label}
+          >
+            <Icon size={19} />
+            {!isCollapsed && <span>{item.label}</span>}
+          </button>
+        )
+        if (isCollapsed) return (
+          <TooltipProvider key={item.label} delayDuration={120}>
+            <Tooltip>
+              <TooltipTrigger asChild>{button}</TooltipTrigger>
+              <TooltipContent side="right">{item.label}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )
+        return button
+      })}
+    </nav>
+  )
 
   return <div className="min-h-screen bg-background text-foreground">
     <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b bg-card px-4 md:px-6">
-      <div className="flex items-center gap-3"><Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={19} /></Button><Button variant="ghost" size="icon" className="hidden md:inline-flex" aria-label="Toggle sidebar"><PanelLeft size={19} /></Button><Wordmark /><span className="hidden border-l pl-3 text-sm text-muted-foreground sm:inline">CRM workspace</span></div>
-      <div className="flex items-center gap-2"><Button variant="ghost" size="icon" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={() => { setDark((value) => !value); document.documentElement.classList.toggle('dark', !dark) }}>{dark ? <Sun size={18} /> : <Moon size={18} />}</Button><button type="button" className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" style={{ backgroundColor: BRAND }} aria-label="Open account menu">SD</button></div>
+      <div className="flex items-center gap-3">
+        <Button variant="ghost" size="icon" className="md:hidden" aria-label="Open navigation" onClick={() => setMobileOpen(true)}><Menu size={19} /></Button>
+        <Button variant="ghost" size="icon" className="hidden md:inline-flex" aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-pressed={collapsed} onClick={toggleCollapsed}>
+          {collapsed ? <PanelLeftOpen size={19} /> : <PanelLeftClose size={19} />}
+        </Button>
+        <Wordmark />
+        <span className="hidden border-l pl-3 text-sm text-muted-foreground sm:inline">CRM workspace</span>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="icon" aria-label={dark ? 'Switch to light mode' : 'Switch to dark mode'} onClick={toggleDark}>
+          {dark ? <Sun size={18} /> : <Moon size={18} />}
+        </Button>
+        <button type="button" className="flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" style={{ backgroundColor: BRAND }} aria-label="Open account menu">SD</button>
+      </div>
     </header>
-    <Sheet open={mobileOpen} onOpenChange={setMobileOpen}><SheetContent side="left" className="w-72 p-0"><SheetHeader className="flex h-16 flex-row items-center border-b px-6"><SheetTitle><Wordmark /></SheetTitle></SheetHeader>{nav}</SheetContent></Sheet>
-    <div className="mx-auto flex max-w-[1600px]">
-      <aside className="hidden min-h-[calc(100vh-4rem)] w-64 shrink-0 border-r bg-card md:block"><div className="px-6 pb-1 pt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Workspace</div>{nav}</aside>
-      <main className="min-w-0 flex-1 p-4 md:p-6 lg:p-8"><div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><div className="mb-2 flex items-center gap-2 text-sm font-medium" style={{ color: BRAND }}><Users size={16} />Sales pipeline</div><h1 className="text-2xl font-bold tracking-tight md:text-3xl">Leads</h1><p className="mt-1 text-sm text-muted-foreground">Capture intent, keep follow-ups moving, and turn conversations into revenue.</p></div><Button className="w-fit gap-2 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setNoticeBriefly('New lead flow opened')}><Plus size={16} />Add lead</Button></div>
+    <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+      <SheetContent side="left" className="w-72 p-0">
+        <SheetHeader className="flex h-16 flex-row items-center border-b px-6"><SheetTitle><Wordmark /></SheetTitle></SheetHeader>
+        {nav(false)}
+      </SheetContent>
+    </Sheet>
+    <div className="flex">
+      <aside className={`hidden min-h-[calc(100vh-4rem)] shrink-0 border-r bg-card transition-[width] duration-200 ease-in-out md:block ${collapsed ? 'w-[76px]' : 'w-64'}`}>
+        {!collapsed && <div className="px-6 pb-1 pt-6 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Workspace</div>}
+        {collapsed && <div className="pt-6" />}
+        {nav(collapsed)}
+      </aside>
+      <main className="min-w-0 flex-1 p-4 md:p-6 lg:p-8">
+        <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+          <div>
+            <div className="mb-2 flex items-center gap-2 text-sm font-medium" style={{ color: BRAND }}><Users size={16} />Sales pipeline</div>
+            <h1 className="text-2xl font-bold tracking-tight md:text-3xl">Leads</h1>
+            <p className="mt-1 text-sm text-muted-foreground">Capture intent, keep follow-ups moving, and turn conversations into revenue.</p>
+          </div>
+          <Button className="w-fit gap-2 bg-primary text-primary-foreground hover:bg-primary/90" onClick={() => setNoticeBriefly('New lead flow opened')}><Plus size={16} />Add lead</Button>
+        </div>
         <DataTableWithFilters data={pageRows} columns={leadColumns} features={{ search: true, refresh: true, add: true, export: true, columnVisibility: true, columnSizing: true, sorting: true, pinning: true, selection: true, bulkActions: true, expandableRows: true, rowActions: true, pagination: true, responsiveCards: true, loadingState: true, errorState: true }} rowActions={{ view: { href: (row) => `#${row.id}`, label: 'View' }, edit: { href: (row) => `#edit-${row.id}`, label: 'Edit' }, menu: [{ id: 'assign', label: 'Assign owner' }, { id: 'archive', label: 'Archive', destructive: true }] }} bulkActions={[{ id: 'assign', label: 'Assign owner' }, { id: 'archive', label: 'Archive', destructive: true }]} pagination={{ mode: 'page', pageIndex: state.pageIndex, pageSize: state.pageSize, pageSizeOptions: [5, 10, 25], total: filteredRows.length }} search={state.search} getRowId={(row) => row.id} mobileCardFields={['name', 'status', 'owner', 'value']} loading={refreshing} emptyMessage="No leads yet" noResultsMessage="No leads match your current search." onSearchChange={onSearchChange} onSortChange={onSortChange} onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} onRefresh={handleRefresh} onAdd={() => setNoticeBriefly('New lead flow opened')} onExport={handleExport} onBulkAction={(action, rows) => setNoticeBriefly(`${action.label} queued for ${rows.length} leads`)} onAction={(actionId) => setNoticeBriefly(`${actionId} action selected`)} renderExpandedRow={(row) => <div className="grid gap-3 px-5 py-4 sm:grid-cols-3"><div><div className="text-xs text-muted-foreground">Email</div><div className="mt-1 text-sm font-medium text-foreground">{row.email}</div></div><div><div className="text-xs text-muted-foreground">Opportunity</div><div className="mt-1 text-sm font-medium text-foreground">${row.value.toLocaleString()} potential</div></div><div><div className="text-xs text-muted-foreground">Risk signal</div><div className="mt-1 text-sm font-medium text-foreground">{row.atRisk ? 'Needs attention' : 'Healthy follow-up'}</div></div></div>} persistKey="selldo-leads" addLabel="Add lead" />
         <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground"><span>Showing server-shaped controls with shareable URL state</span><span className="hidden items-center gap-1 sm:flex"><Download size={13} />CSV export ready</span></div>
-      </div></main>
+      </main>
     </div>
     {notice && <div className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-lg border bg-card px-4 py-3 text-sm font-medium text-foreground shadow-lg"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: BRAND }} />{notice}<button type="button" className="ml-2 text-muted-foreground hover:text-foreground" aria-label="Dismiss notification" onClick={() => setNotice('')}><X size={14} /></button></div>}
   </div>

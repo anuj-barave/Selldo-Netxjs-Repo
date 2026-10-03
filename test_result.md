@@ -339,6 +339,34 @@
 ##   current_focus:
 ##     - "Verify pin and sort icons are hidden by default on non-pinned/non-sorted columns and appear on hover of the header"
 ##     - "Verify a pinned column shows the pin icon permanently in brand green"
+
+## Main Agent Fix - Sidebar collapse + layout width
+##   - task: "Sidebar collapse toggle and remove excessive side margins"
+##     implemented: true
+##     working: "NA"
+##     file: "app/page.js"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "User reported two issues: (1) the sidebar collapse icon in the header did nothing; (2) too much horizontal margin forced the table into a narrow strip on wide screens. Fix: added `collapsed` state in page.js, wired the header toggle button to flip it, persisted to localStorage key `selldo:collapsed`. Sidebar now swaps between `w-64` (expanded) and `w-[76px]` (collapsed) with a 200ms width transition; icons-only layout uses the Tooltip primitive to show the label on hover when collapsed. PanelLeftClose/PanelLeftOpen icons swap on the header toggle. Also removed the outer `mx-auto flex max-w-[1600px]` wrapper and the inner `max-w-7xl` cap so the main area fills the viewport (verified table right edge at 1887px on a 1920px viewport, vs. previously hitting ~1600px). Dark mode toggle is now persisted the same way via `selldo:theme`."
+##
+## test_plan:
+##   current_focus:
+##     - "Verify header collapse button toggles sidebar between 256px and 76px with icon-only nav + hover tooltips"
+##     - "Verify collapsed state persists across reload via localStorage key selldo:collapsed"
+##     - "Verify main content fills the viewport (no large right-side empty space on wide screens)"
+##     - "Confirm the DataTable pin/sort hover behaviour still holds after the layout rewrite"
+##   stuck_tasks: []
+##   test_all: false
+##   test_priority: "high_first"
+##
+## agent_communication:
+##     -agent: "main"
+##     -message: "Please validate sidebar collapse + full-width layout fix on the external preview URL. Keep the existing DataTable regression checks (pin hover-only, Reset to default, drag reorder) green."
+
 ##     - "Verify the Columns popover 'Reset to default' link clears order/visibility/pin and persists after reload"
 ##     - "Verify cell/header alignment: Potential value right-aligned, Status badge left-aligned, Checkbox centered"
 ##     - "Verify drag-reorder in Columns popover still updates the table and persists after reload"
@@ -360,4 +388,17 @@
 ##         -working: true
 ##         -agent: "testing"
 ##         -comment: "Validated all four bug fixes at external preview URL. GROUP A (Default state & icon visibility): Filters button correctly absent, Select-all checkbox present in first header (aria-label: 'Select all rows'), Lead column pin icon visible permanently with aria-pressed=true and aria-label='Unpin Lead', Status column pin button opacity-0 initially and opacity-100 on hover then opacity-0 after mouse-away, sort icon has opacity-0 class initially and opacity-100 class after sorting (class changes correctly). GROUP B (Pin behaviour): Owner column pinned via header icon becomes sticky-positioned, pin icon remains visible (opacity-100) with aria-pressed=true after mouse-away, unpinning works and icon hides. GROUP C (Columns popover reset): Reset to default button present, pinned Status column, hid Segment column (using [role=checkbox] selector with aria-checked), dragged Owner above Lead, clicked Reset - Lead remained pinned (default), Status unpinned, Segment visible, column order correct, state persisted after reload. GROUP D (Alignment): Potential value cell text-align: right, Lead cell text-align: left, checkbox cell justify-content: center, Potential value header justify-content: flex-end. GROUP E (Drag reorder): Dragged Owner above Lead in Columns popover using mouse events, order changed to [Owner, Lead, Segment, Status, Potential value, Last updated], persisted after reload. All requirements met."
+##
+## Frontend Testing Data - Testing Agent (Sidebar collapse + full-width layout validation)
+##   - task: "Sidebar collapse toggle and remove excessive side margins"
+##     working: true
+##     needs_retesting: false
+##     status_history:
+##         -working: true
+##         -agent: "testing"
+##         -comment: "Validated two-part bug fix at external preview URL https://crm-dashboard-shell.preview.emergentagent.com/ across 5 test groups. GROUP 1 (Collapse interaction): Initial sidebar width 256px, collapsed to 76px after clicking 'Collapse sidebar' button, icon-only navigation confirmed (no visible text labels), tooltip with 'Leads' text appears on hover, width returns to 256px on expand, text labels render again, localStorage['selldo:collapsed'] correctly stores '1' (collapsed) and '0' (expanded). GROUP 2 (Collapse persistence): Sidebar remains at 76px after page reload, toggle button correctly shows aria-label 'Expand sidebar'. GROUP 3 (Full-width layout): Main element width 1664px (exceeds 1600px requirement), table right edge at 1887px (33px from viewport right edge, well within 80px tolerance), confirms max-width constraints removed. GROUP 4 (DataTable regression): Filters button absent, Lead pin button opacity 1 at rest (default-pinned), Status pin button opacity 0 at rest / 1 on hover / 0 after mouse away, 'Reset to default' link present in Columns popover. GROUP 5 (Mobile sheet): Aside sidebar hidden on mobile (390x844), mobile menu button opens sheet, Sell.do wordmark visible, all 5 nav items visible (Overview, Leads, Reports, Documents, Settings). All test groups PASSED."
+##
+## agent_communication:
+##     -agent: "testing"
+##     -message: "Sidebar collapse + full-width layout bug fix validation COMPLETE. Both parts of the fix are working correctly: (1) Sidebar collapse toggle with localStorage persistence functional across all viewports; (2) Main content now fills viewport with table extending to within 33px of right edge on 1920px screens (previously constrained to ~1600px). No regressions detected in DataTable pin/sort behavior or mobile sheet functionality. All 5 test groups passed."
 
