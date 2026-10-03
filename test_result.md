@@ -305,3 +305,19 @@
 ## agent_communication:
 ##     -agent: "testing"
 ##     -message: "HIGH PRIORITY: Search is visibly editable but does not filter rows or update URL after debounce; Filters opens no usable #filter-status control in the external browser session. Fix URL-state callback/popover wiring before retest. No test-agent application files changed; only test_result.md was appended."
+
+
+## Main Agent Fix - DataTable URL state (post credit top-up)
+##   - task: "Browser validation of reusable Sell.do DataTable"
+##     working: true
+##     needs_retesting: false
+##     file: "components/data-table/data-table-url-state.ts, components/data-table/data-table-toolbar.tsx"
+##     stuck_count: 0
+##     status_history:
+##         -working: true
+##         -agent: "main"
+##         -comment: "Fixed URL-state wiring. Changes: (1) data-table-url-state.ts: stabilised filterKeys via signature-based useMemo, moved searchParams into a ref so update() is stable across renders, memoised every on* handler with useCallback. (2) data-table-toolbar.tsx: debounce effect now stores onSearchChange in a ref so the 300ms timer only resets on actual draft change, and the Filters Popover is controlled via open/onOpenChange state. Verified in browser: typing 'Vertex' debounces into router.replace with ?q=Vertex and the table filters to just Vertex Health; Filters popover shows Status select, Segment multi-select, at-risk toggle and Reset; selecting status=Qualified produces ?status=Qualified; sorting the Lead header produces ?sort=name.asc; changing rows-per-page produces ?pageSize=10."
+##
+## agent_communication:
+##     -agent: "main"
+##     -message: "DataTable URL-state regression resolved. All P0 toolbar interactions verified end-to-end. Dev server needed a hard restart for Next.js to re-emit the client bundle after the refactor; a plain file touch was not enough while HMR was in a degraded state. No backend changes."
