@@ -82,15 +82,21 @@ export function DataTableWithFilters<T>({
 }: DataTableWithFiltersProps<T>) {
   const isMobile = useMobileTable()
   const columnIdsSignature = columns.map((column) => column.id).join('|')
-  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(() => Object.fromEntries(columns.map((column) => [column.id, column.visibleByDefault !== false])))
-  const [columnOrder, setColumnOrder] = useState<string[]>(() => columns.map((column) => column.id))
+
+  const defaultVisibility = useMemo(() => Object.fromEntries(columns.map((column) => [column.id, column.visibleByDefault !== false])), [columns])
+  const defaultOrder = useMemo(() => columns.map((column) => column.id), [columns])
+  const defaultPinnedLeft = useMemo(() => columns.filter((column) => column.pin === 'left').map((column) => column.id), [columns])
+
+  const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>(defaultVisibility)
+  const [columnOrder, setColumnOrder] = useState<string[]>(defaultOrder)
+  const [pinnedLeft, setPinnedLeft] = useState<string[]>(defaultPinnedLeft)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [expandedIds, setExpandedIds] = useState<string[]>([])
   const selectedRows = useMemo(() => data.filter((row, index) => selectedIds.includes(getRowId(row, index))), [data, getRowId, selectedIds])
   const hasQuery = Boolean(search)
   const visibleData = error ? [] : data
 
-  // Hydrate from localStorage once; keep order/visibility consistent whenever the column set changes.
+  // Hydrate from localStorage when the column set is first seen.
   useEffect(() => {
     try {
       const storedVisibility = window.localStorage.getItem(`${persistKey}:visibility`)
@@ -104,6 +110,8 @@ export function DataTableWithFilters<T>({
           return [...known, ...missing]
         })
       }
+      const storedPinned = window.localStorage.getItem(`${persistKey}:pinnedLeft`)
+      if (storedPinned) setPinnedLeft(JSON.parse(storedPinned))
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [persistKey, columnIdsSignature])
@@ -120,6 +128,23 @@ export function DataTableWithFilters<T>({
     setColumnOrder(order)
     if (typeof window !== 'undefined') window.localStorage.setItem(`${persistKey}:order`, JSON.stringify(order))
   }, [persistKey])
+
+  const changePinnedLeft = useCallback((ids: string[]) => {
+    setPinnedLeft(ids)
+    if (typeof window !== 'undefined') window.localStorage.setItem(`${persistKey}:pinnedLeft`, JSON.stringify(ids))
+  }, [persistKey])
+
+  const resetColumns = useCallback(() => {
+    setVisibleColumns(defaultVisibility)
+    setColumnOrder(defaultOrder)
+    setPinnedLeft(defaultPinnedLeft)
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(`${persistKey}:visibility`)
+      window.localStorage.removeItem(`${persistKey}:order`)
+      window.localStorage.removeItem(`${persistKey}:pinnedLeft`)
+      window.localStorage.removeItem(`${persistKey}:sizing`)
+    }
+  }, [defaultOrder, defaultPinnedLeft, defaultVisibility, persistKey])
 
   const rowIdFor = (row: T, index: number) => getRowId(row, index)
   const expandedRenderer = (row: T) => <div className="border-t bg-muted/20 p-4 text-sm text-muted-foreground">{renderExpandedRow?.(row) || 'Additional row details'}</div>
@@ -139,6 +164,7 @@ export function DataTableWithFilters<T>({
           onExport={onExport}
           onToggleColumn={changeColumnVisibility}
           onColumnOrderChange={changeColumnOrder}
+          onResetColumns={resetColumns}
           addLabel={addLabel}
         />
       )}
@@ -191,6 +217,8 @@ export function DataTableWithFilters<T>({
           onColumnVisibilityChange={setVisibleColumns}
           columnOrder={columnOrder}
           onColumnOrderChange={changeColumnOrder}
+          pinnedLeft={pinnedLeft}
+          onPinnedLeftChange={changePinnedLeft}
         />
       )}
       {features.pagination !== false && pagination && !loading && !error ? <DataTablePagination config={pagination} onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} onCursorChange={onCursorChange} /> : null}

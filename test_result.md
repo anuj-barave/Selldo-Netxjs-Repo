@@ -321,3 +321,43 @@
 ## agent_communication:
 ##     -agent: "main"
 ##     -message: "DataTable URL-state regression resolved. All P0 toolbar interactions verified end-to-end. Dev server needed a hard restart for Next.js to re-emit the client bundle after the refactor; a plain file touch was not enough while HMR was in a degraded state. No backend changes."
+
+## Main Agent Fix - Column controls polish (reset, hover icons, alignment)
+##   - task: "DataTable column controls – hover icons, alignment, and reset"
+##     implemented: true
+##     working: "NA"
+##     file: "components/data-table/data-table.tsx, components/data-table/data-table-toolbar.tsx, components/data-table/data-table-with-filters.tsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "User-reported bug fix. Changes: (1) Lifted pin state up to DataTableWithFilters and added a resetColumns handler that clears visibility, order, and pin (and sizing) in state + localStorage; (2) Added a 'Reset to default' link in the Columns Popover header; (3) Pin icon is hidden by default and only renders when the column can be pinned; sort icon and pin icon both only appear on header hover (group/header hover) unless the column is actively sorted/pinned, in which case the icon stays visible; (4) Pin icon when pinned shows a solid rotated Pin in the brand primary colour, unpinned shows PinOff only on hover; (5) Added w-full to header and cell wrappers so align='right' etc. actually anchor to the column edge; also made the __expand column header a sr-only label with a 36px width so the chevron sits consistently under its slot. (6) Checkbox select column header/cell now wrap in a centered flex box for consistent alignment. No backend changes."
+##
+## test_plan:
+##   current_focus:
+##     - "Verify pin and sort icons are hidden by default on non-pinned/non-sorted columns and appear on hover of the header"
+##     - "Verify a pinned column shows the pin icon permanently in brand green"
+##     - "Verify the Columns popover 'Reset to default' link clears order/visibility/pin and persists after reload"
+##     - "Verify cell/header alignment: Potential value right-aligned, Status badge left-aligned, Checkbox centered"
+##     - "Verify drag-reorder in Columns popover still updates the table and persists after reload"
+##   stuck_tasks: []
+##   test_all: false
+##   test_priority: "high_first"
+##
+## agent_communication:
+##     -agent: "main"
+##     -message: "Column control polish shipped. Pin state is now controlled by the wrapper so Reset wipes it alongside order and visibility. Hover reveals sort/pin icons on headers; active sort/pin keeps the icon visible. Please validate on the external preview URL."
+##     -agent: "testing"
+##     -message: "Comprehensive validation complete at external preview URL https://crm-dashboard-shell.preview.emergentagent.com/. All four user-reported bugs are FIXED and working correctly: (1) Reset to default link present in Columns popover header - clears order/visibility/pin/sizing, localStorage cleared, persists after reload; (2) Pin and sort icons hidden by default (opacity-0 class), appear on header hover (opacity-100), stay visible when actively pinned/sorted - verified with Lead (pinned), Status (unpinned), Owner (sortable); (3) Pin icon only renders for pinnable columns - all leadColumns are pinnable, checkbox/expand/actions correctly excluded from pin rendering; (4) Cell/header alignment correct - Potential value right-aligned (text-align: right, justify-content: flex-end), Status badge left-aligned, checkbox centered (justify-content: center). Additional verification: Drag reorder in Columns popover works (Owner dragged above Lead), order persists after reload. Lead column correctly pinned by default (pin: 'left'). All test groups A-E passed."
+##
+## Frontend Testing Data - Testing Agent (Column controls validation)
+##   - task: "DataTable column controls – hover icons, alignment, and reset"
+##     working: true
+##     needs_retesting: false
+##     status_history:
+##         -working: true
+##         -agent: "testing"
+##         -comment: "Validated all four bug fixes at external preview URL. GROUP A (Default state & icon visibility): Filters button correctly absent, Select-all checkbox present in first header (aria-label: 'Select all rows'), Lead column pin icon visible permanently with aria-pressed=true and aria-label='Unpin Lead', Status column pin button opacity-0 initially and opacity-100 on hover then opacity-0 after mouse-away, sort icon has opacity-0 class initially and opacity-100 class after sorting (class changes correctly). GROUP B (Pin behaviour): Owner column pinned via header icon becomes sticky-positioned, pin icon remains visible (opacity-100) with aria-pressed=true after mouse-away, unpinning works and icon hides. GROUP C (Columns popover reset): Reset to default button present, pinned Status column, hid Segment column (using [role=checkbox] selector with aria-checked), dragged Owner above Lead, clicked Reset - Lead remained pinned (default), Status unpinned, Segment visible, column order correct, state persisted after reload. GROUP D (Alignment): Potential value cell text-align: right, Lead cell text-align: left, checkbox cell justify-content: center, Potential value header justify-content: flex-end. GROUP E (Drag reorder): Dragged Owner above Lead in Columns popover using mouse events, order changed to [Owner, Lead, Segment, Status, Potential value, Last updated], persisted after reload. All requirements met."
+

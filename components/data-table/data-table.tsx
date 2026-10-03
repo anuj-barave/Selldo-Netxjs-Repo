@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import {
   flexRender,
   functionalUpdate,
@@ -45,6 +45,8 @@ type DataTableProps<T> = {
   onColumnVisibilityChange?: (visibility: Record<string, boolean>) => void
   columnOrder?: string[]
   onColumnOrderChange?: (order: string[]) => void
+  pinnedLeft?: string[]
+  onPinnedLeftChange?: (ids: string[]) => void
   initialColumnSizing?: Record<string, number>
   persistKey?: string
   loading?: boolean
@@ -75,8 +77,12 @@ function cellAlign(align?: DataTableColumn<unknown>['align']) {
   return align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
 }
 
+function headerJustify(align?: DataTableColumn<unknown>['align']) {
+  return align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'
+}
+
 function bodyCellClass(column: DataTableColumn<unknown>) {
-  return `${cellAlign(column.align)} ${column.overflow === 'wrap' ? 'whitespace-normal' : 'truncate'}`
+  return `w-full ${cellAlign(column.align)} ${column.overflow === 'wrap' ? 'whitespace-normal' : 'truncate'}`
 }
 
 export function DataTable<T>({
@@ -100,6 +106,8 @@ export function DataTable<T>({
   onColumnVisibilityChange,
   columnOrder: controlledColumnOrder,
   onColumnOrderChange,
+  pinnedLeft: controlledPinnedLeft,
+  onPinnedLeftChange,
   initialColumnSizing,
   persistKey = 'sell-do-table',
   loading = false,
@@ -115,6 +123,7 @@ export function DataTable<T>({
   const [rowSelection, setRowSelection] = useState<RowSelectionState>({})
   const [expanded, setExpanded] = useState<ExpandedState>({})
   const [internalVisibility, setInternalVisibility] = useState<Record<string, boolean>>({})
+  const [internalPinnedLeft, setInternalPinnedLeft] = useState<string[]>(() => canPin ? columns.filter((column) => column.pin === 'left').map((column) => column.id) : [])
   const [columnSizing, setColumnSizing] = useState<Record<string, number>>(() => {
     if (typeof window === 'undefined') return initialColumnSizing || {}
     try {
@@ -122,22 +131,11 @@ export function DataTable<T>({
     } catch { return initialColumnSizing || {} }
   })
 
-  // Pin state (controlled internally, persisted). Seed from column.pin on mount.
-  const [pinnedLeft, setPinnedLeft] = useState<string[]>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const stored = window.localStorage.getItem(`${persistKey}:pinnedLeft`)
-        if (stored) return JSON.parse(stored)
-      } catch {}
-    }
-    return canPin ? columns.filter((column) => column.pin === 'left').map((column) => column.id) : []
-  })
-  useEffect(() => {
-    if (typeof window !== 'undefined') window.localStorage.setItem(`${persistKey}:pinnedLeft`, JSON.stringify(pinnedLeft))
-  }, [persistKey, pinnedLeft])
-
+  const pinnedLeft = controlledPinnedLeft ?? internalPinnedLeft
   const togglePin = (columnId: string) => {
-    setPinnedLeft((current) => current.includes(columnId) ? current.filter((id) => id !== columnId) : [...current, columnId])
+    const next = pinnedLeft.includes(columnId) ? pinnedLeft.filter((id) => id !== columnId) : [...pinnedLeft, columnId]
+    if (onPinnedLeftChange) onPinnedLeftChange(next)
+    else setInternalPinnedLeft(next)
   }
 
   const pinning = useMemo<ColumnPinningState>(() => ({
@@ -146,7 +144,6 @@ export function DataTable<T>({
     right: canPin ? columns.filter((column) => column.pin === 'right').map((column) => column.id) : [],
   }), [canPin, columns, pinnedLeft])
 
-  // Column order (controlled from parent; always render __select, __expand first and __actions last).
   const resolvedOrder = useMemo<ColumnOrderState>(() => {
     const base = (controlledColumnOrder && controlledColumnOrder.length > 0 ? controlledColumnOrder : columns.map((column) => column.id)).filter((id) => columns.some((column) => column.id === id))
     const missing = columns.map((column) => column.id).filter((id) => !base.includes(id))
@@ -172,19 +169,27 @@ export function DataTable<T>({
         enableResizing: false,
         enableHiding: false,
         enablePinning: false,
-        header: ({ table }) => <Checkbox aria-label="Select all rows" checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')} onCheckedChange={(value) => table.toggleAllPageRowsSelected(Boolean(value))} />,
-        cell: ({ row }) => <Checkbox aria-label={`Select row ${row.id}`} checked={row.getIsSelected()} disabled={!row.getCanSelect()} onCheckedChange={(value) => row.toggleSelected(Boolean(value))} />,
+        header: ({ table }) => <div className="flex w-full justify-center"><Checkbox aria-label="Select all rows" checked={table.getIsAllPageRowsSelected() || (table.getIsSomePageRowsSelected() && 'indeterminate')} onCheckedChange={(value) => table.toggleAllPageRowsSelected(Boolean(value))} /></div>,
+        cell: ({ row }) => <div className="flex w-full justify-center"><Checkbox aria-label={`Select row ${row.id}`} checked={row.getIsSelected()} disabled={!row.getCanSelect()} onCheckedChange={(value) => row.toggleSelected(Boolean(value))} /></div>,
       })
     }
     if (canExpand) {
       next.push({
         id: EXPAND_ID,
-        size: 40,
+        size: 36,
         enableResizing: false,
         enableHiding: false,
         enablePinning: false,
-        header: () => null,
-        cell: ({ row }) => row.getCanExpand() ? <button type="button" aria-label={row.getIsExpanded() ? 'Collapse row' : 'Expand row'} aria-expanded={row.getIsExpanded()} className="rounded p-1 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => row.toggleExpanded()}>{row.getIsExpanded() ? <ChevronDown size={16} /> : <ChevronRight size={16} />}</button> : null,
+        header: () => <span className="sr-only">Expand</span>,
+        cell: ({ row }) => (
+          <div className="flex w-full justify-center">
+            {row.getCanExpand() ? (
+              <button type="button" aria-label={row.getIsExpanded() ? 'Collapse row' : 'Expand row'} aria-expanded={row.getIsExpanded()} className="rounded p-1 text-muted-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => row.toggleExpanded()}>
+                {row.getIsExpanded() ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+            ) : null}
+          </div>
+        ),
       })
     }
     columns.forEach((column) => {
@@ -201,18 +206,24 @@ export function DataTable<T>({
         header: ({ column: tableColumn }) => {
           const sort = tableColumn.getIsSorted()
           const isPinned = tableColumn.getIsPinned() === 'left'
-          const alignClass = column.align === 'right' ? 'justify-end' : column.align === 'center' ? 'justify-center' : ''
+          const canColumnSort = tableColumn.getCanSort()
+          const canColumnPin = canPin && tableColumn.getCanPin()
+          // Icon visibility rules:
+          //  - sort icon: always visible when active (asc/desc), otherwise show on header hover
+          //  - pin icon:  only renders when column can be pinned; always visible when pinned, otherwise show on header hover
+          const sortIconClass = sort ? 'opacity-100' : 'opacity-0 group-hover/header:opacity-100 focus-visible:opacity-100'
+          const pinIconClass = isPinned ? 'opacity-100 text-primary' : 'opacity-0 group-hover/header:opacity-100 focus-visible:opacity-100 text-muted-foreground'
           return (
-            <div className={`flex items-center gap-1.5 ${alignClass}`}>
-              {tableColumn.getCanSort() ? (
-                <button type="button" className="inline-flex items-center gap-1.5 rounded-sm font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={tableColumn.getToggleSortingHandler()} aria-label={`Sort by ${column.label}`} aria-sort={sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : 'none'}>
-                  {column.label}
-                  <SortIcon direction={sort} />
+            <div className={`group/header flex w-full items-center gap-1.5 ${headerJustify(column.align)}`}>
+              {canColumnSort ? (
+                <button type="button" className="inline-flex items-center gap-1 rounded-sm font-medium hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={tableColumn.getToggleSortingHandler()} aria-label={`Sort by ${column.label}`} aria-sort={sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : 'none'}>
+                  <span>{column.label}</span>
+                  <span className={`inline-flex transition-opacity ${sortIconClass}`}><SortIcon direction={sort} /></span>
                 </button>
               ) : (
                 <span>{column.label}</span>
               )}
-              {canPin && (
+              {canColumnPin && (
                 <TooltipProvider delayDuration={120}>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -221,9 +232,9 @@ export function DataTable<T>({
                         aria-label={isPinned ? `Unpin ${column.label}` : `Pin ${column.label}`}
                         aria-pressed={isPinned}
                         onClick={(event) => { event.stopPropagation(); togglePin(column.id) }}
-                        className={`inline-flex h-5 w-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${isPinned ? 'text-primary' : ''}`}
+                        className={`inline-flex h-5 w-5 items-center justify-center rounded transition-opacity hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${pinIconClass}`}
                       >
-                        {isPinned ? <Pin size={13} className="rotate-45" /> : <PinOff size={13} />}
+                        {isPinned ? <Pin size={13} className="rotate-45 fill-current" /> : <PinOff size={13} />}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent side="top">{isPinned ? 'Unpin column' : 'Pin column'}</TooltipContent>
@@ -243,7 +254,7 @@ export function DataTable<T>({
     if (features.rowActions && rowActions) {
       next.push({
         id: ACTIONS_ID,
-        size: 56,
+        size: 96,
         enableResizing: false,
         enableHiding: false,
         enablePinning: false,
@@ -273,7 +284,8 @@ export function DataTable<T>({
       })
     }
     return next
-  }, [canExpand, canPin, canResize, canSelect, canSort, columns, features.rowActions, onAction, rowActions])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canExpand, canPin, canResize, canSelect, canSort, columns, features.rowActions, onAction, rowActions, pinnedLeft])
 
   const table = useReactTable({
     data,

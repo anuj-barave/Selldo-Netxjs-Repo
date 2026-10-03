@@ -18,7 +18,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Download, GripVertical, Plus, RefreshCw, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Download, GripVertical, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -37,6 +37,7 @@ type DataTableToolbarProps<T> = {
   onExport?: () => void
   onToggleColumn: (id: string, visible: boolean) => void
   onColumnOrderChange: (order: string[]) => void
+  onResetColumns?: () => void
   addLabel?: string
 }
 
@@ -56,7 +57,7 @@ function SortableColumnRow({ id, label, visible, onToggle }: { id: string; label
   )
 }
 
-export function DataTableToolbar<T>({ columns, features, search, visibleColumns, columnOrder, onSearchChange, onRefresh, onAdd, onExport, onToggleColumn, onColumnOrderChange, addLabel = 'Add' }: DataTableToolbarProps<T>) {
+export function DataTableToolbar<T>({ columns, features, search, visibleColumns, columnOrder, onSearchChange, onRefresh, onAdd, onExport, onToggleColumn, onColumnOrderChange, onResetColumns, addLabel = 'Add' }: DataTableToolbarProps<T>) {
   const [draft, setDraft] = useState(search)
   const onSearchRef = useRef(onSearchChange)
   useEffect(() => { onSearchRef.current = onSearchChange })
@@ -104,10 +105,17 @@ export function DataTableToolbar<T>({ columns, features, search, visibleColumns,
                 <SlidersHorizontal size={15} />Columns
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-[300px] p-0">
-              <div className="border-b px-4 py-3">
-                <h3 className="text-sm font-semibold text-foreground">Columns</h3>
-                <p className="mt-0.5 text-xs text-muted-foreground">Drag to reorder. Toggle visibility.</p>
+            <PopoverContent align="end" className="w-[320px] p-0">
+              <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground">Columns</h3>
+                  <p className="mt-0.5 text-xs text-muted-foreground">Drag to reorder. Toggle visibility.</p>
+                </div>
+                {onResetColumns && (
+                  <button type="button" onClick={onResetColumns} className="inline-flex items-center gap-1 whitespace-nowrap rounded px-1 py-0.5 text-xs font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <RotateCcw size={12} />Reset to default
+                  </button>
+                )}
               </div>
               <div className="max-h-[340px] space-y-1.5 overflow-y-auto p-3">
                 <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
