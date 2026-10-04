@@ -18,7 +18,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Download, GripVertical, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react'
+import { Download, GripVertical, ListFilter, Plus, RefreshCw, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -86,7 +86,7 @@ export function DataTableToolbar<T>({ columns, features, search, visibleColumns,
     <div className="flex flex-col gap-3 border-b bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex flex-1 flex-wrap items-center gap-2">
         {features.search !== false && (
-          <div className="relative min-w-[220px] flex-1 sm:max-w-xs">
+          <div className="relative w-full flex-1">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Search records..." aria-label="Search records" className="h-9 pl-9" />
             {draft && (
@@ -98,11 +98,16 @@ export function DataTableToolbar<T>({ columns, features, search, visibleColumns,
         )}
       </div>
       <div className="flex flex-wrap items-center gap-2">
+        {features.refresh !== false && (
+          <Button variant="outline" size="icon" className="h-9 w-9" aria-label="Refresh" onClick={onRefresh}>
+            <RefreshCw size={15} />
+          </Button>
+        )}
         {features.columnVisibility !== false && (
           <Popover>
             <PopoverTrigger asChild>
-              <Button variant="outline" size="sm" className="h-9 gap-2">
-                <SlidersHorizontal size={15} />Columns
+              <Button variant="outline" size="icon" className="h-9 w-9" aria-label="Columns">
+                <SlidersHorizontal size={15} />
               </Button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-[320px] p-0">
@@ -139,13 +144,13 @@ export function DataTableToolbar<T>({ columns, features, search, visibleColumns,
             </PopoverContent>
           </Popover>
         )}
-        {features.refresh !== false && (
-          <Button variant="outline" size="icon" className="h-9 w-9" aria-label="Refresh" onClick={onRefresh}>
-            <RefreshCw size={15} />
+        {features.filters !== false && (
+          <Button variant="outline" size="sm" className="h-9 gap-2" aria-label="Filter">
+            <ListFilter size={15} />Filter
           </Button>
         )}
         {features.export && (
-          <Button variant="outline" size="sm" className="h-9 gap-2" onClick={onExport}>
+          <Button size="sm" className="h-9 gap-2 bg-slate-900 text-slate-50 hover:bg-slate-800 dark:bg-slate-800 dark:text-slate-50 dark:hover:bg-slate-700" onClick={onExport}>
             <Download size={15} />Export
           </Button>
         )}

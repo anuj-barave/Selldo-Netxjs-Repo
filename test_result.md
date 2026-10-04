@@ -357,6 +357,34 @@
 ##   current_focus:
 ##     - "Verify header collapse button toggles sidebar between 256px and 76px with icon-only nav + hover tooltips"
 ##     - "Verify collapsed state persists across reload via localStorage key selldo:collapsed"
+
+## Main Agent Fix - Pagination layout + Filter button in toolbar
+##   - task: "Pagination layout matches reference and add non-functional Filter button"
+##     implemented: true
+##     working: "NA"
+##     file: "components/data-table/data-table-pagination.tsx, components/data-table/data-table-toolbar.tsx"
+##     stuck_count: 0
+##     priority: "high"
+##     needs_retesting: true
+##     status_history:
+##         -working: "NA"
+##         -agent: "main"
+##         -comment: "User provided reference images. Changes: (1) Rewrote pagination – left side now reads 'Showing X - Y of Z items' with bolded numbers; right side has 'Results per page [N]' then a button strip of First | numbered page buttons (windowed max 5) | Last. Active page uses brand primary fill, disabled First/Last at bounds, numbered buttons are h-8 w-8. (2) Toolbar rework – search is now full-width (`w-full flex-1`); action group reordered to Refresh icon → Columns icon (slider icon only, label hidden) → Filter button (ListFilter icon + 'Filter' label, non-functional placeholder for user to wire later) → Export (dark slate button) → Add. Matches reference button hierarchy."
+##
+## test_plan:
+##   current_focus:
+##     - "Pagination: Showing/Results per page/First/numbered buttons/Last render correctly; clicking page 2 updates URL to ?page=2"
+##     - "Pagination: Active page button shows brand primary background and aria-current='page'"
+##     - "Toolbar: search input stretches full width; Filter button renders between Columns and Export; dark Export button; green Add"
+##     - "No regressions on DataTable features (pin hover, drag reorder, column reset)"
+##   stuck_tasks: []
+##   test_all: false
+##   test_priority: "high_first"
+##
+## agent_communication:
+##     -agent: "main"
+##     -message: "UI polish for pagination and toolbar landed. Please validate layout + interactions on the external preview URL."
+
 ##     - "Verify main content fills the viewport (no large right-side empty space on wide screens)"
 ##     - "Confirm the DataTable pin/sort hover behaviour still holds after the layout rewrite"
 ##   stuck_tasks: []
@@ -401,4 +429,18 @@
 ## agent_communication:
 ##     -agent: "testing"
 ##     -message: "Sidebar collapse + full-width layout bug fix validation COMPLETE. Both parts of the fix are working correctly: (1) Sidebar collapse toggle with localStorage persistence functional across all viewports; (2) Main content now fills viewport with table extending to within 33px of right edge on 1920px screens (previously constrained to ~1600px). No regressions detected in DataTable pin/sort behavior or mobile sheet functionality. All 5 test groups passed."
+
+
+## Frontend Testing Data - Testing Agent (Pagination + Toolbar UI validation)
+##   - task: "Pagination layout matches reference and add non-functional Filter button"
+##     working: true
+##     needs_retesting: false
+##     status_history:
+##         -working: true
+##         -agent: "testing"
+##         -comment: "Validated pagination rewrite and toolbar reorganization at external preview URL https://crm-dashboard-shell.preview.emergentagent.com/ at viewport 1920x1000. All three test groups PASSED. GROUP 1 (Pagination Layout): Left side correctly displays 'Showing 1 - 5 of 8 items' with bolded numbers; 'Results per page' label present with select dropdown; button strip contains First | numbered page buttons (windowed max 5) | Last; Page 1 button has aria-current='page' and bg-primary class; Page 2 button exists without aria-current; clicking Page 2 updates URL to ?page=2 and sets aria-current='page' on Page 2 while removing from Page 1; First button enabled and Last button disabled on page 2 (last page); clicking First clears page query from URL. GROUP 2 (Toolbar Layout): Search input width 1197px (>= 900px requirement, full-width flex-1); right action group order verified: Refresh icon → Columns icon (SlidersHorizontal, icon-only) → Filter button (ListFilter icon + 'Filter' text, outline variant) → Export (dark slate bg-slate-900) → Add lead (green bg-primary); Filter button contains SVG icon and 'Filter' text as expected. GROUP 3 (No Regressions): Columns popover opens with 'Reset to default' link and 6 draggable column rows; Status pin icon has opacity-0 (hidden by default); Lead pin icon visible (default-pinned column); sidebar collapse toggle works (256px → 76px). All requirements met, no application code modified."
+##
+## agent_communication:
+##     -agent: "testing"
+##     -message: "Pagination + toolbar UI validation COMPLETE. Both UI updates are working correctly: (1) Pagination rewrite with 'Showing X - Y of Z items', 'Results per page' select, and First/numbered/Last button strip with proper aria-current and disabled states; (2) Toolbar reorganization with full-width search (1197px) and correct action button order including new non-functional Filter button. No regressions detected in Columns popover, pin icon visibility, or sidebar collapse. All 3 test groups passed at 1920x1000 viewport."
 
